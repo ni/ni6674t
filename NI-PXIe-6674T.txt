@@ -1,0 +1,157 @@
+National Instruments PXIe-6674T
+
+I.   Overview
+II.  Sysfs API
+III. Examples
+IV.  Resetting the Device
+V.   Footnotes/References
+
+
+--------
+Overview
+--------
+
+The National Instruments PXIe-6674T device is a digital signal-based routing
+device for use in a PXIe (PCIe eXtensions for Instrumentation)[1] chassis.
+The device has 8 front panel inputs, which can be configured to source/sink
+signals according to a set of routing rules.
+
+The set of possible routes is determined by the device's topology, which is
+described by a set of routing terminals and a set of directed relationships
+between them.
+
+You can configure the functionality listed above by using the sysfs API,
+documented below.
+
+
+---------
+Sysfs API
+---------
+
+The kernel module used to control the NI PXIe-6674T module is named 'ni6674t'.
+In order to enumerate the devices controlled by the ni6674t driver, and thus
+control the routing state of the board, a usermode component will find the
+list of controlled devices as symlinks in:
+
+         /sys/bus/pci/drivers/ni6674t
+
+For example, on a system with a NI PXIe-6674T, the kernel gives the
+device a designation '0000:05:0f.0'. As such, a link is created in this
+directory:
+
+         /sys/bus/pci/drivers/ni6674t/0000:05:0f.0
+
+This link points to a device-specific directory. The file paths listed below
+are all assumed to be relative to this directory.
+
+  terminals/
+     The 'terminals' directory represents a kset of all routing terminals
+     on the NI PXIe-6674T. There is one directory or 'kobject' per available
+     terminal.
+
+     PFI0/
+     PXI_Trig2/
+     PXIe_DStarA6/
+        In this example, PFI0, PXI_Trig2, and PXIe_DStarA6 are all terminals
+        in the device's routing topology. Every terminal has the following
+        available attributes:
+
+        available_inputs [RO]
+           Contains a space-separated list of possible immediate routing inputs
+           to this terminal. That is, directly adjacent terminals which can
+           be used as an input to this terminal.
+
+        current_input [RW]
+           When read, returns the name of the terminal whose output is acting
+           as an input.
+           When written to, changes which terminal is acting as an input.
+           Valid inputs are those listed in the available_inputs attribute.
+
+        line_state [RO]
+           When read, returns the state of this terminal's output. Possible
+		   values are '0' and '1'. This attribute is useful for testing.
+
+        polarity [RW]
+           When read, returns either 'normal' or 'inverted' to indicate
+           whether the input signal is unmodified or is inverted when
+           passing through the terminal.
+           When the string 'inverted' is written to this attribute, the
+           terminal is configured to invert output when passing through this
+           terminal. Writing 'normal' will disable output inversion.
+
+
+--------
+Examples
+--------
+
+   Here is a quick example with a trivial topology. Assume the device's
+   topology looked like this:
+
+                  _________________
+      PFI0  -----|                 |-----  PXI_Trig0
+                 |  (FPGA Switch)  |
+      PFI1  -----|_________________|-----  PXI_Trig1
+
+   The directory hierarchy for the device would look like this:
+
+      # cd /sys/bus/pci/drivers/ni6674t/0000:05:0f.0
+      # find . -type d
+      terminals/
+      terminals/PFI0
+      terminals/PFI1
+      terminals/PXI_Trig0
+      terminals/PXI_Trig1
+
+   Now, say, for example, we would like to make a route from PFI0 to PXI_Trig0:
+
+      # cd terminals
+      # echo PFI0 > PXI_Trig0/current_input
+
+   If we want to also route PFI0 to PXI_Trig1:
+
+      # echo PFI0 > PXI_Trig1/current_input
+
+   It is also possible to configure the terminal to invert its output:
+
+      # echo inverted > PXI_Trig0/polarity
+
+   This would configure PXI_Trig0 to invert the signal's polarity as it is
+   routed through the terminal.
+
+
+--------------------
+Resetting the Device
+--------------------
+
+   To return an NI PXIe-6674 to its default state, perform a device reset using the
+   following steps (root privileges are required).
+
+   1) Identify the directory in sysfs that corresponds with the device you wish
+      to reset.
+         # ls /sys/bus/pci/drivers/ni6674t/
+         0000:05:0f.0  bind  module  new_id  remove_id  uevent  unbind
+      In this case, there is only one device present, and its directory name is
+      "0000:05:0f.0".
+
+   2) Unbind the device from the driver.
+         # echo -n "0000:05:0f.0" > /sys/bus/pci/drivers/ni6674t/unbind
+      At this point, the driver is no longer associated with the device. The
+      directory for the device disappears from sysfs.
+
+   3) Rebind the driver to the device. (Note that unbound devices are still
+      listed in /sys/bus/pci/devices. Devices that are unbound will not have a
+      "driver" subdirectory.)
+         # echo -n "0000:05:0f.0" > /sys/bus/pci/drivers/ni6674t/bind
+      During the rebinding process, the driver will re-initialize the device to
+      its default state. A directory for this device will be re-created in
+      sysfs. The reset operation is now complete.
+
+   For more information on bind/unbind, see http://lwn.net/Articles/143397/
+
+
+--------------------
+Footnotes/References
+--------------------
+
+   1: See the freely available specification documents on PXI(e), courtesy
+      of the PXI Systems Alliance at http://www.pxisa.org/Specifications.html
